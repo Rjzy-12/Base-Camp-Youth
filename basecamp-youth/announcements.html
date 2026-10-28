@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Announcements | Base Camp Youth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="site-header" id="site-header"></header>
+<main>
+
+<section class="block wrap">
+  <div class="page-head"><div class="eyebrow">News</div><h1>Announcements</h1>
+  <p class="muted">Official updates from the Barangay and the Sangguniang Kabataan.</p></div>
+  <div class="chips" id="chips" role="group" aria-label="Filter by category"></div>
+  <label style="max-width:360px;margin-bottom:20px">Search <input type="search" id="q" placeholder="Type a keyword"></label>
+  <div id="list" class="stack">Loading...</div>
+</section>
+
+</main>
+<footer class="site-footer" id="site-footer"></footer>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/common.js"></script>
+<script>
+renderShell("announcements.html");
+
+let all = [], cat = "All";
+function draw() {
+  const q = $("#q").value.trim().toLowerCase();
+  const rows = all.filter(a => (cat === "All" || a.category === cat) &&
+    (!q || (a.title + " " + a.body).toLowerCase().includes(q)));
+  $("#list").innerHTML = rows.length ? rows.map(announcementCard).join("") : '<p class="muted">No announcements match. Try another category or keyword.</p>';
+}
+function drawChips() {
+  const cats = ["All", ...new Set(all.map(a => a.category))];
+  if (!cats.includes(cat)) cat = "All";
+  $("#chips").innerHTML = cats.map(c => `<button class="chip" aria-pressed="${c === cat}" data-c="${esc(c)}">${esc(c)}</button>`).join("");
+}
+async function load() {
+  const { data, error } = await db.from("announcements").select("*").eq("published", true)
+    .order("pinned", { ascending: false }).order("created_at", { ascending: false });
+  if (error) { $("#list").innerHTML = '<div class="notice err">Could not load announcements.</div>'; return; }
+  all = data; drawChips(); draw();
+}
+$("#chips").addEventListener("click", e => {
+  const b = e.target.closest("[data-c]"); if (!b) return;
+  cat = b.dataset.c; drawChips(); draw();
+});
+$("#q").addEventListener("input", draw);
+load();
+onLive(["announcements"], load);
+
+</script>
+</body>
+</html>

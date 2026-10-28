@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Youth registry | Base Camp Youth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="site-header" id="site-header"></header>
+<main>
+
+<section class="block wrap">
+  <div class="page-head"><div class="eyebrow">Registry</div><h1>Youth registry</h1>
+  <p class="muted">Youth residents of Base Camp ages 15 to 30 can register here. SK officials review each profile before it is added to the official registry.</p></div>
+  <form class="form" id="profForm">
+    <label>Full name <small>Last name, first name, middle initial</small>
+      <input name="full_name" required minlength="2" maxlength="120" autocomplete="name"></label>
+    <div class="row">
+      <label>Birthdate <input name="birthdate" type="date" required></label>
+      <label>Sex <select name="sex" required><option value="">Choose</option><option>Male</option><option>Female</option></select></label>
+    </div>
+    <div class="row">
+      <label>Purok <input name="purok" required maxlength="60"></label>
+      <label>Contact number <input name="contact" type="tel" maxlength="60" required autocomplete="tel"></label>
+    </div>
+    <label>Email <small>Optional</small><input name="email" type="email" maxlength="120"></label>
+    <div class="row">
+      <label>Current status
+        <select name="status" required><option value="">Choose</option><option>Student</option><option>Employed</option><option>Out of School Youth</option><option>Other</option></select></label>
+      <label>School or workplace <small>Optional</small><input name="school_or_work" maxlength="160"></label>
+    </div>
+    <label>Are you an SK member?
+      <select name="sk_member"><option value="no">No</option><option value="yes">Yes</option></select></label>
+    <label class="check"><input type="checkbox" name="consent" required>
+      <span>I agree that the Barangay and SK may keep and use my details for youth profiling and programs, as allowed by the Data Privacy Act of 2012. For residents under 18, a parent or guardian is aware of this registration.</span></label>
+    <div id="result"></div>
+    <div><button class="btn" type="submit" id="send">Submit profile</button></div>
+  </form>
+</section>
+
+</main>
+<footer class="site-footer" id="site-footer"></footer>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/common.js"></script>
+<script>
+renderShell("register.html");
+
+const pad = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+const t = new Date();
+const bd = $("#profForm").elements.birthdate;
+bd.max = pad(new Date(t.getFullYear() - 15, t.getMonth(), t.getDate()));        // at least 15
+bd.min = pad(new Date(t.getFullYear() - 31, t.getMonth(), t.getDate() + 1));    // not yet 31
+$("#profForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const f = new FormData(ev.target);
+  $("#send").disabled = true;
+  const { error } = await db.from("youth_profiles").insert({
+    full_name: f.get("full_name").trim(), birthdate: f.get("birthdate"), sex: f.get("sex"),
+    purok: f.get("purok").trim(), contact: f.get("contact").trim(), email: f.get("email").trim() || null,
+    status: f.get("status"), school_or_work: f.get("school_or_work").trim() || null,
+    sk_member: f.get("sk_member") === "yes", approval: "Pending"
+  });
+  $("#send").disabled = false;
+  if (error) {
+    notice($("#result"), "err", error.code === "23505"
+      ? "This person is already registered or waiting for approval."
+      : "Could not submit your profile. Please check your details and try again.");
+    return;
+  }
+  notice($("#result"), "ok", "Profile submitted. SK officials will review it before it is added to the registry.");
+  ev.target.reset();
+});
+
+</script>
+</body>
+</html>

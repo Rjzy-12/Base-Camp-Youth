@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Events | Base Camp Youth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="site-header" id="site-header"></header>
+<main>
+
+<section class="block wrap">
+  <div class="page-head">
+    <div class="eyebrow">Community</div>
+    <h1>Events, polls &amp; ideas</h1>
+    <p class="muted">Join upcoming programs, vote on what the youth should do next, and share your own ideas. <span class="live">Updates live</span></p>
+  </div>
+  <div class="seg" role="tablist" aria-label="Sections">
+    <button role="tab" id="tEvents" aria-selected="true"><span data-ico="calendar"></span> Events</button>
+    <button role="tab" id="tPolls" aria-selected="false"><span data-ico="vote"></span> Polls <span class="count" id="pollBadge" hidden>0</span></button>
+    <button role="tab" id="tIdeas" aria-selected="false"><span data-ico="bulb"></span> Ideas</button>
+  </div>
+
+  <div id="pEvents">
+    <div class="view-switch" role="group" aria-label="View">
+      <button class="chip" id="vCal" aria-pressed="true">Calendar</button>
+      <button class="chip" id="vList" aria-pressed="false">List</button>
+    </div>
+    <div id="view"><div class="skeleton"></div></div>
+  </div>
+
+  <div id="pPolls" hidden>
+    <div id="pollList" class="stack"><div class="skeleton"></div></div>
+  </div>
+
+  <div id="pIdeas" hidden>
+    <div class="sug-layout">
+      <div>
+        <div class="section-head" style="margin-bottom:14px">
+          <h2 style="font-size:1.4rem">Community ideas</h2>
+          <div class="chips" style="margin:0" role="group" aria-label="Sort">
+            <button class="chip" data-sort="top" aria-pressed="true">Most liked</button>
+            <button class="chip" data-sort="new" aria-pressed="false">Newest</button>
+          </div>
+        </div>
+        <div id="sugList" class="stack"><div class="skeleton"></div></div>
+      </div>
+      <aside class="sticky-side">
+        <form class="card form" id="sugForm" style="max-width:none;padding:22px">
+          <div><div class="eyebrow">Your turn</div><h3 style="margin:0">Suggest an event or project</h3></div>
+          <label>Your name <small>Optional</small><input name="author_name" maxlength="80" autocomplete="name"></label>
+          <label>Idea title <input name="title" required minlength="3" maxlength="160" placeholder="e.g. Youth basketball league"></label>
+          <label>Tell us more <textarea name="body" required minlength="3" maxlength="2000" placeholder="What is it, who is it for, and why would it help the youth?"></textarea></label>
+          <div id="sugMsg"></div>
+          <button class="btn btn-sun" type="submit" id="sugGo">Post my idea</button>
+        </form>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<dialog id="dlg">
+  <form class="form" id="regForm" method="dialog" style="max-width:none">
+    <h2 id="dlgTitle">Register</h2>
+    <label>Full name <input name="full_name" required minlength="2" maxlength="120" autocomplete="name"></label>
+    <div class="row">
+      <label>Age <input name="age" type="number" min="5" max="120" required></label>
+      <label>Purok <input name="purok" maxlength="60" required></label>
+    </div>
+    <label>Contact number <small>So the SK can reach you about changes</small>
+      <input name="contact" type="tel" maxlength="60" required autocomplete="tel"></label>
+    <label class="check"><input type="checkbox" name="consent" required>
+      <span>I agree that my details will be used only to manage this event, as allowed by the Data Privacy Act of 2012.</span></label>
+    <div id="msg"></div>
+    <div class="btns" style="margin:0">
+      <button class="btn" type="submit" id="go">Register</button>
+      <button class="btn btn-line" type="button" id="cancel">Close</button>
+    </div>
+  </form>
+</dialog>
+
+</main>
+<footer class="site-footer" id="site-footer"></footer>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/common.js"></script>
+<script>
+renderShell("events.html");
+$$("[data-ico]").forEach(el => el.outerHTML = ICON[el.dataset.ico]);
+
+let view = "calendar", all = [], map = {}, selected = null, currentEvent = null;
+let month = new Date(); month.setDate(1);
+const iso = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+const todayIso = () => iso(new Date());
+
+async function load() {
+  try {
+    const [{ data, error }, { data: counts }] = await Promise.all([
+      db.from("events").select("*").order("event_date").order("start_time"), db.rpc("event_counts")]);
+    if (error) throw error;
+    all = data || [];
+    map = Object.fromEntries((counts || []).map(c => [c.evt_id, Number(c.registered)]));
+    draw();
+  } catch (e) { $("#view").innerHTML = '<div class="notice err">Could not load events.</div>'; }
+}
+const cards = list => list.length
+  ? `<div class="grid">${list.map(e => eventCard(e, map[e.id], e.event_date >= todayIso())).join("")}</div>`
+  : '<p class="muted">No events here.</p>';
+
+function draw() {
+  $("#vCal").setAttribute("aria-pressed", view === "calendar");
+  $("#vList").setAttribute("aria-pressed", view === "list");
+  if (view === "list") {
+    const up = all.filter(e => e.event_date >= todayIso());
+    $("#view").innerHTML = up.length ? cards(up) : '<p class="muted">No upcoming events right now. New events will be posted here.</p>';
+    return;
+  }
+  const y = month.getFullYear(), m = month.getMonth();
+  const lead = new Date(y, m, 1).getDay(), days = new Date(y, m + 1, 0).getDate();
+  const label = month.toLocaleDateString("en-PH", { month: "long", year: "numeric" });
+  let grid = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => `<div class="cal-dow">${d}</div>`).join("");
+  grid += '<div class="cal-day blank"></div>'.repeat(lead);
+  for (let d = 1; d <= days; d++) {
+    const key = iso(new Date(y, m, d));
+    const evs = all.filter(e => e.event_date === key);
+    const cls = `cal-day ${evs.length ? "has" : ""} ${key === todayIso() ? "today" : ""} ${key === selected ? "sel" : ""}`;
+    const inner = `<span class="n">${d}</span>` + evs.slice(0, 2).map(e => `<span class="cal-ev">${esc(e.title)}</span>`).join("") +
+      (evs.length > 2 ? `<span class="cal-more">+${evs.length - 2} more</span>` : "");
+    grid += evs.length
+      ? `<button class="${cls}" data-day="${key}" aria-label="${d} ${label}, ${evs.length} event(s)">${inner}</button>`
+      : `<div class="${cls}">${inner}</div>`;
+  }
+  const monthEvents = all.filter(e => e.event_date.slice(0, 7) === key7(y, m));
+  const shown = selected ? all.filter(e => e.event_date === selected) : monthEvents;
+  const heading = selected ? "Events on " + fmtDate(selected) : "Events in " + label;
+  $("#view").innerHTML = `<div class="cal-bar"><h2>${label}</h2>
+      <div class="btns" style="margin:0"><button class="btn btn-line btn-sm" id="prev">Previous</button>
+      <button class="btn btn-line btn-sm" id="todayBtn">Today</button>
+      <button class="btn btn-line btn-sm" id="next">Next</button></div></div>
+    <div class="cal">${grid}</div>
+    <h3>${heading}</h3>${cards(shown)}`;
+}
+const key7 = (y, m) => y + "-" + String(m + 1).padStart(2, "0");
+
+$("#vCal").onclick = () => { view = "calendar"; draw(); };
+$("#vList").onclick = () => { view = "list"; draw(); };
+$("#view").addEventListener("click", e => {
+  const day = e.target.closest("[data-day]");
+  if (day) { selected = selected === day.dataset.day ? null : day.dataset.day; draw(); return; }
+  if (e.target.closest("#prev")) { month.setMonth(month.getMonth() - 1); selected = null; draw(); }
+  if (e.target.closest("#next")) { month.setMonth(month.getMonth() + 1); selected = null; draw(); }
+  if (e.target.closest("#todayBtn")) { month = new Date(); month.setDate(1); selected = null; draw(); }
+  const b = e.target.closest("[data-register]"); if (!b) return;
+  currentEvent = b.dataset.register;
+  $("#dlgTitle").textContent = "Register for " + b.dataset.title;
+  $("#msg").innerHTML = ""; $("#regForm").reset(); $("#go").disabled = false;
+  $("#dlg").showModal();
+});
+$("#cancel").addEventListener("click", () => $("#dlg").close());
+$("#regForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const f = new FormData(ev.target);
+  $("#go").disabled = true;
+  const { error } = await db.from("event_registrations").insert({
+    event_id: currentEvent, full_name: f.get("full_name").trim(), age: +f.get("age"),
+    purok: f.get("purok").trim(), contact: f.get("contact").trim()
+  });
+  if (error) {
+    notice($("#msg"), "err", /full/i.test(error.message) ? "Sorry, this event is already full." : "Could not register. Please try again.");
+    $("#go").disabled = false;
+  } else {
+    notice($("#msg"), "ok", "You are registered. See you at the event!");
+    load();
+  }
+});
+
+/* ---------- tabs ---------- */
+const PANELS = { events: ["#tEvents", "#pEvents"], polls: ["#tPolls", "#pPolls"], ideas: ["#tIdeas", "#pIdeas"] };
+function showTab(name) {
+  if (!PANELS[name]) name = "events";
+  for (const [k, [t, p]] of Object.entries(PANELS)) {
+    $(t).setAttribute("aria-selected", k === name); $(p).hidden = k !== name;
+  }
+  history.replaceState(null, "", name === "events" ? location.pathname : "#" + name);
+}
+for (const k of Object.keys(PANELS)) $(PANELS[k][0]).onclick = () => showTab(k);
+showTab((location.hash || "").slice(1));
+
+/* ---------- polls ---------- */
+let polls = [], pollOpts = {}, results = {}, turnout = {}, mine = {}, timers = [];
+const KEY = voterKey();
+
+async function loadPolls() {
+  try {
+    await finalizeDue();
+    const [{ data: ps, error }, { data: os }] = await Promise.all([
+      db.from("polls").select("*").order("created_at", { ascending: false }),
+      db.from("poll_options").select("*").order("position")]);
+    if (error) throw error;
+    polls = ps || []; pollOpts = {};
+    (os || []).forEach(o => (pollOpts[o.poll_id] = pollOpts[o.poll_id] || []).push(o));
+    results = {}; turnout = {}; mine = {};
+    await Promise.all(polls.map(async p => {
+      const [t, m, r] = await Promise.all([db.rpc("poll_turnout", { p_poll: p.id }), db.rpc("my_vote", { p_poll: p.id, p_key: KEY }),
+        p.status === "closed" ? db.rpc("poll_results", { p_poll: p.id }) : Promise.resolve({ data: null })]);
+      turnout[p.id] = Number(t.data || 0); mine[p.id] = m.data || null;
+      if (r.data) results[p.id] = Object.fromEntries(r.data.map(x => [x.option_id, Number(x.votes)]));
+    }));
+    drawPolls();
+  } catch (e) {
+    console.error(e);
+    $("#pollList").innerHTML = '<div class="notice err">Could not load polls. Did you run database/update-2.sql?</div>';
+  }
+}
+
+function countdownText(end) {
+  let s = Math.floor((new Date(end) - Date.now()) / 1000);
+  if (s <= 0) return null;
+  const d = Math.floor(s / 86400); s %= 86400;
+  const h = Math.floor(s / 3600); s %= 3600;
+  const m = Math.floor(s / 60); s %= 60;
+  return d > 0 ? `${d}d ${h}h ${m}m left` : h > 0 ? `${h}h ${m}m ${s}s left` : `${m}m ${s}s left`;
+}
+
+function pollCard(p) {
+  const opts = pollOpts[p.id] || [], closed = p.status === "closed", res = results[p.id] || {};
+  const total = Object.values(res).reduce((a, b) => a + b, 0);
+  const top = Math.max(0, ...Object.values(res));
+  const voted = mine[p.id], hasVoted = !!voted;
+  const rows = opts.map(o => {
+    const v = res[o.id] || 0, pct = total ? Math.round(v * 100 / total) : 0, win = closed && total > 0 && v === top;
+    const cls = `opt ${voted === o.id ? "chosen" : ""} ${win ? "win" : ""}`;
+    return `<button class="${cls}" data-poll="${p.id}" data-opt="${o.id}" ${closed || hasVoted ? "disabled" : ""} aria-label="${esc(o.label)}">
+      ${closed ? `<span class="bar" style="width:${pct}%"></span>` : `<span class="radio"></span>`}
+      <span class="txt"><b>${esc(o.label)}${win ? `<span class="crown">${ICON.trophy} Winner</span>` : ""}${voted === o.id ? ` <span class="tag ok" style="margin-left:6px">Your vote</span>` : ""}</b>${o.detail ? `<span>${esc(o.detail)}</span>` : ""}</span>
+      ${closed ? `<span class="pct">${pct}%<small>${v} vote${v === 1 ? "" : "s"}</small></span>` : ""}</button>`;
+  }).join("");
+  const foot = closed
+    ? `<span>${ICON.check} Voting ended ${fmtDateTime(p.closed_at || p.ends_at)}</span><span><b>${total}</b> total votes</span>`
+    : `<span>${hasVoted ? ICON.check + " Thanks for voting! Results will be shown when the poll ends." : "Pick one option. You can only vote once."}</span><span><b>${turnout[p.id] || 0}</b> voted so far</span>`;
+  return `<article class="card poll ${closed ? "closed" : ""}" data-poll-card="${p.id}">
+    <div class="poll-top"><div class="poll-meta">
+      <span class="tag ${closed ? "ok" : "sun"}">${closed ? "Closed" : "Voting open"}</span>
+      ${closed ? `<span class="countdown ended">${ICON.trophy} Results are in</span>` : `<span class="countdown" data-end="${p.ends_at}">${ICON.clock} <span>${countdownText(p.ends_at) || "Ending..."}</span></span>`}
+    </div><h3>${esc(p.title)}</h3>${p.description ? `<p>${esc(p.description)}</p>` : ""}</div>
+    <div class="opts">${rows}</div><div class="poll-foot">${foot}</div></article>`;
+}
+
+function drawPolls() {
+  const open = polls.filter(p => p.status === "open");
+  const badge = $("#pollBadge"); badge.hidden = !open.length; badge.textContent = open.length;
+  const sec = (title, list) => list.length ? `<h2 style="font-size:1.3rem;margin:${title === "Open now" ? "0" : "18px"} 0 2px">${title}</h2>${list.map(pollCard).join("")}` : "";
+  $("#pollList").innerHTML = polls.length
+    ? sec("Open now", open) + sec("Past polls", polls.filter(p => p.status === "closed"))
+    : `<div class="empty"><b>No polls yet</b>When the SK wants the youth to decide on an event, the vote will appear here.</div>`;
+  tick();
+}
+
+let tickTimer, closing = false;
+function tick() {
+  clearInterval(tickTimer);
+  const run = async () => {
+    let expired = false;
+    $$(".countdown[data-end]").forEach(el => {
+      const t = countdownText(el.dataset.end);
+      if (t) el.lastElementChild.textContent = t; else expired = true;
+    });
+    if (expired && !closing) { closing = true; clearInterval(tickTimer); await loadPolls(); closing = false; }
+  };
+  run(); tickTimer = setInterval(run, 1000);
+}
+
+$("#pollList").addEventListener("click", async e => {
+  const b = e.target.closest("[data-opt]"); if (!b || b.disabled) return;
+  const label = b.getAttribute("aria-label");
+  if (!confirm(`Vote for "${label}"? You cannot change your vote afterwards.`)) return;
+  $$(".opt").forEach(x => x.disabled = true);
+  const { error } = await db.rpc("cast_vote", { p_poll: b.dataset.poll, p_option: b.dataset.opt, p_key: KEY });
+  if (error) {
+    toast(/already/i.test(error.message) ? "You already voted in this poll." : /ended/i.test(error.message) ? "Voting has already ended." : "Could not record your vote.", "err");
+  } else toast("Vote recorded. Thank you!");
+  loadPolls();
+});
+
+/* ---------- ideas / suggestions ---------- */
+let sugs = [], comments = {}, likes = {}, myLikes = new Set(), sort = "top", openThreads = new Set();
+
+async function loadIdeas() {
+  try {
+    const [{ data: ss, error }, { data: cs }, { data: lc }, { data: ml }] = await Promise.all([
+      db.from("suggestions").select("*").eq("hidden", false).order("created_at", { ascending: false }),
+      db.from("suggestion_comments").select("*").eq("hidden", false).order("created_at"),
+      db.rpc("suggestion_like_counts"), db.rpc("my_likes", { p_key: KEY })]);
+    if (error) throw error;
+    sugs = ss || []; comments = {};
+    (cs || []).forEach(c => (comments[c.suggestion_id] = comments[c.suggestion_id] || []).push(c));
+    likes = Object.fromEntries((lc || []).map(x => [x.sug_id, Number(x.likes)]));
+    myLikes = new Set(ml || []);
+    drawIdeas();
+  } catch (e) {
+    console.error(e);
+    $("#sugList").innerHTML = '<div class="notice err">Could not load ideas. Did you run database/update-2.sql?</div>';
+  }
+}
+
+function commentHtml(c) {
+  return `<div class="comment ${c.is_staff ? "staff" : ""}">${avatar(c.is_staff ? "SK" : c.author_name)}
+    <div class="bubble"><div class="who">${esc(c.author_name || "Anonymous")}${c.is_staff ? '<span class="tag sun">Staff</span>' : ""}<time>${ago(c.created_at)}</time></div>
+    <p>${esc(c.body)}</p></div></div>`;
+}
+
+function sugCard(s) {
+  const cs = comments[s.id] || [], open = openThreads.has(s.id), liked = myLikes.has(s.id);
+  return `<article class="card sug" data-sug="${s.id}">
+    <div class="sug-main">
+      <button class="like" data-like="${s.id}" aria-pressed="${liked}" aria-label="${liked ? "Remove like" : "Like this idea"}">${ICON.up}<b>${likes[s.id] || 0}</b></button>
+      <div><div class="byline">${avatar(s.author_name)}<span><b style="color:var(--ink)">${esc(s.author_name || "Anonymous")}</b> &middot; ${ago(s.created_at)}</span>
+        ${s.status !== "Open" ? `<span class="status ${slug(s.status)}">${esc(s.status)}</span>` : ""}</div>
+        <h3>${esc(s.title)}</h3><p class="body">${esc(s.body)}</p></div></div>
+    <div class="sug-actions"><button class="toggle-comments" data-toggle="${s.id}" aria-expanded="${open}">${ICON.chat} ${cs.length ? cs.length + (cs.length === 1 ? " comment" : " comments") : "Add a comment"}</button></div>
+    ${open ? `<div class="thread">${cs.map(commentHtml).join("") || '<p class="muted small" style="margin:0 0 12px">No comments yet. Be the first to share your thoughts.</p>'}
+      <form class="cform" data-cform="${s.id}">
+        <div class="names"><input name="author_name" placeholder="Your name (optional)" maxlength="80" value="${esc(savedName())}" aria-label="Your name"></div>
+        <textarea name="body" required maxlength="1000" placeholder="Write a comment..." aria-label="Comment"></textarea>
+        <button class="btn btn-sm" type="submit">Post</button></form></div>` : ""}</article>`;
+}
+
+function drawIdeas() {
+  const list = [...sugs].sort(sort === "top"
+    ? (a, b) => (likes[b.id] || 0) - (likes[a.id] || 0) || new Date(b.created_at) - new Date(a.created_at)
+    : (a, b) => new Date(b.created_at) - new Date(a.created_at));
+  $$("[data-sort]").forEach(b => b.setAttribute("aria-pressed", b.dataset.sort === sort));
+  const focused = document.activeElement && document.activeElement.closest && document.activeElement.closest("[data-cform]");
+  if (focused && document.activeElement.value) return;   // don't wipe a comment someone is typing
+  $("#sugList").innerHTML = list.length ? list.map(sugCard).join("")
+    : `<div class="empty"><b>No ideas yet</b>Got an event or project in mind? Be the first to post one.</div>`;
+}
+
+$$("[data-sort]").forEach(b => b.onclick = () => { sort = b.dataset.sort; drawIdeas(); });
+$("#sugList").addEventListener("click", async e => {
+  const t = e.target.closest("[data-toggle]");
+  if (t) { const id = t.dataset.toggle; openThreads.has(id) ? openThreads.delete(id) : openThreads.add(id); drawIdeas(); return; }
+  const l = e.target.closest("[data-like]");
+  if (l) {
+    const id = l.dataset.like, was = myLikes.has(id);
+    was ? myLikes.delete(id) : myLikes.add(id); likes[id] = Math.max(0, (likes[id] || 0) + (was ? -1 : 1)); drawIdeas();
+    const { error } = await db.rpc("toggle_like", { p_sug: id, p_key: KEY });
+    if (error) { toast("Could not save your like.", "err"); loadIdeas(); }
+  }
+});
+$("#sugList").addEventListener("submit", async e => {
+  const f = e.target.closest("[data-cform]"); if (!f) return;
+  e.preventDefault();
+  const fd = new FormData(f), name = fd.get("author_name").trim();
+  const btn = $("button", f); btn.disabled = true;
+  const { error } = await db.from("suggestion_comments").insert({ suggestion_id: f.dataset.cform, author_name: name || null, body: fd.get("body").trim() });
+  btn.disabled = false;
+  if (error) return toast("Could not post your comment.", "err");
+  if (name) saveName(name);
+  toast("Comment posted."); loadIdeas();
+});
+$("#sugForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const fd = new FormData(e.target), name = fd.get("author_name").trim();
+  $("#sugGo").disabled = true;
+  const { error } = await db.from("suggestions").insert({ title: fd.get("title").trim(), body: fd.get("body").trim(), author_name: name || null });
+  $("#sugGo").disabled = false;
+  if (error) return notice($("#sugMsg"), "err", "Could not post your idea. Please try again.");
+  if (name) saveName(name);
+  e.target.reset(); $("#sugMsg").innerHTML = ""; toast("Your idea is live. Thank you!"); loadIdeas();
+});
+$("#sugForm").elements.author_name.value = savedName();
+
+load(); loadPolls(); loadIdeas();
+onLive(["events"], load);
+onLive(["polls", "poll_options", "announcements"], loadPolls);
+onLive(["suggestions", "suggestion_comments"], loadIdeas);
+
+</script>
+</body>
+</html>

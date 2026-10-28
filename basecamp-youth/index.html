@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Home | Base Camp Youth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="site-header" id="site-header"></header>
+<main>
+
+<section class="hero"><div class="wrap hero-grid">
+  <div>
+    <span class="pill">Official platform of Barangay Base Camp</span>
+    <h1>Know what is happening in Base Camp <em>before it happens.</em></h1>
+    <p>Official announcements, youth events, and barangay document requests in one place, from the Barangay and the SK.</p>
+    <div class="btns">
+      <a class="btn btn-sun" href="events.html">See upcoming events</a>
+      <a class="btn btn-ghost" href="events.html#polls">Vote in polls</a>
+      <a class="btn btn-ghost" href="request.html">Request a document</a>
+      <a class="btn btn-ghost" href="register.html">Join the youth registry</a>
+    </div>
+  </div>
+  <aside class="next" id="next-event" aria-live="polite">Loading next event...</aside>
+</div></section>
+
+<section class="wrap" id="features"></section>
+
+<section class="block wrap" id="pollSpot" hidden>
+  <div class="section-head"><div><div class="eyebrow">Your voice</div><h2>Vote on what is next</h2></div><a href="events.html#polls">All polls</a></div>
+  <div id="pollPreview" class="stack"></div>
+</section>
+
+<section class="block wrap">
+  <div class="section-head"><div><div class="eyebrow">News</div><h2>Latest announcements</h2></div><a href="announcements.html">See all</a></div>
+  <div id="ann-list" class="stack">Loading...</div>
+</section>
+
+<section class="block wrap">
+  <div class="section-head"><div><div class="eyebrow">Calendar</div><h2>Upcoming events</h2></div><a href="events.html">See all and register</a></div>
+  <div id="ev-list" class="grid">Loading...</div>
+</section>
+
+</main>
+<footer class="site-footer" id="site-footer"></footer>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/common.js"></script>
+<script>
+renderShell("index.html");
+
+$("#features").innerHTML = `<div class="features">${[
+  ["events.html", "calendar", "Events", "Browse the calendar and register in seconds."],
+  ["events.html#polls", "vote", "Polls", "Vote on which event the youth do next."],
+  ["events.html#ideas", "bulb", "Ideas", "Suggest a project and discuss it with others."],
+  ["request.html", "file", "Documents", "Request a certificate and track it online."]
+].map(([href, ic, t, d]) => `<a class="feature" href="${href}"><div class="fi">${ICON[ic]}</div><b>${t}</b><span>${d}</span></a>`).join("")}</div>`;
+
+async function loadPollSpot() {
+  try {
+    await finalizeDue();
+    const { data } = await db.from("polls").select("id,title,ends_at").eq("status", "open").order("ends_at").limit(2);
+    $("#pollSpot").hidden = !(data && data.length);
+    $("#pollPreview").innerHTML = (data || []).map(p => `<a class="card" href="events.html#polls" style="text-decoration:none;color:inherit;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap">
+      <div><span class="tag sun">Voting open</span><h3 style="margin:8px 0 0">${esc(p.title)}</h3></div>
+      <span class="btn btn-sm">Vote now</span></a>`).join("");
+  } catch (e) { console.warn(e); }
+}
+
+async function load() {
+  try {
+    const { data: ann, error } = await db.from("announcements").select("*")
+      .eq("published", true).order("pinned", { ascending: false }).order("created_at", { ascending: false }).limit(3);
+    if (error) throw error;
+    $("#ann-list").innerHTML = ann.length ? ann.map(announcementCard).join("") : '<p class="muted">No announcements yet. Check back soon.</p>';
+
+    const { events, map } = await loadUpcomingEvents(3);
+    $("#ev-list").innerHTML = events.length ? events.map(e => eventCard(e, map[e.id], false)).join("") : '<p class="muted">No upcoming events yet.</p>';
+
+    const n = events[0];
+    $("#next-event").innerHTML = n ? `
+      <div class="mon">Next event</div>
+      <div class="day">${toDate(n.event_date).getDate()} <span class="mon">${toDate(n.event_date).toLocaleDateString("en-PH",{month:"long"})}</span></div>
+      <h3 style="margin-top:10px">${esc(n.title)}</h3>
+      <div class="muted small">${esc(n.location || "")} ${n.start_time ? ", " + fmtTime(n.start_time) : ""}</div>
+      <p style="margin:12px 0 0"><a href="events.html">Register now</a></p>` :
+      `<h3>No events scheduled</h3><p class="muted">New youth events will show up here.</p>`;
+  } catch (e) {
+    console.error(e);
+    $("#ann-list").innerHTML = '<div class="notice err">Could not load data. Check your Supabase settings in js/config.js.</div>';
+    $("#ev-list").innerHTML = ""; $("#next-event").innerHTML = "Unavailable";
+  }
+}
+load(); loadPollSpot();
+onLive(["announcements", "events"], load);
+onLive(["polls"], loadPollSpot);
+
+</script>
+</body>
+</html>

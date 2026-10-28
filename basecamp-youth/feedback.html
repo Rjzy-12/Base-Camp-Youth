@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feedback | Base Camp Youth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="site-header" id="site-header"></header>
+<main>
+
+<section class="block wrap">
+  <div class="page-head"><div class="eyebrow">Talk to us</div><h1>Feedback and inquiries</h1>
+  <p class="muted">Send a question, suggestion, or concern to the Barangay and SK officials. Your name is optional.</p></div>
+  <form class="form" id="fbForm">
+    <label>Type
+      <select name="kind"><option>Feedback</option><option>Inquiry</option><option>Suggestion</option></select></label>
+    <label>Name <small>Optional</small><input name="full_name" maxlength="120" autocomplete="name"></label>
+    <label>Contact number or email <small>Optional, but we cannot reply without it</small><input name="contact" maxlength="60"></label>
+    <label>Message <textarea name="message" required minlength="3" maxlength="3000"></textarea></label>
+    <div id="result"></div>
+    <div><button class="btn" type="submit" id="send">Send message</button></div>
+  </form>
+</section>
+
+</main>
+<footer class="site-footer" id="site-footer"></footer>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/common.js"></script>
+<script>
+renderShell("feedback.html");
+
+$("#fbForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const f = new FormData(ev.target);
+  $("#send").disabled = true;
+  const { error } = await db.from("feedback").insert({
+    kind: f.get("kind"), full_name: f.get("full_name").trim() || null,
+    contact: f.get("contact").trim() || null, message: f.get("message").trim()
+  });
+  $("#send").disabled = false;
+  if (error) { notice($("#result"), "err", "Could not send your message. Please try again."); return; }
+  notice($("#result"), "ok", "Message sent. Thank you for helping improve Base Camp.");
+  ev.target.reset();
+});
+
+</script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Request a document | Base Camp Youth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="site-header" id="site-header"></header>
+<main>
+
+<section class="block wrap">
+  <div class="page-head"><div class="eyebrow">Services</div><h1>Request a document</h1>
+  <p class="muted">Fill out the form, get a tracking code, then pick up your document at the Barangay Hall once it is ready.</p></div>
+  <div class="two-col" style="grid-template-columns:minmax(0,620px) 1fr">
+    <div>
+      <form class="form" id="reqForm">
+        <label>Full name <input name="full_name" required minlength="2" maxlength="120" autocomplete="name"></label>
+        <div class="row">
+          <label>Age <input name="age" type="number" min="5" max="120" required></label>
+          <label>Purok <input name="purok" maxlength="60" required></label>
+        </div>
+        <label>Contact number <input name="contact" type="tel" maxlength="60" required autocomplete="tel"></label>
+        <label>Document needed
+          <select name="doc_type" required>
+            <option value="">Choose a document</option>
+            <option>Barangay Clearance</option>
+            <option>Certificate of Residency</option>
+            <option>Certificate of Indigency</option>
+            <option>SK Youth Certification</option>
+            <option>Youth Assistance Request</option>
+            <option>Other</option>
+          </select></label>
+        <label>Purpose <small>For example: school enrollment, scholarship, job application</small>
+          <textarea name="purpose" required maxlength="1000"></textarea></label>
+        <label class="check"><input type="checkbox" name="consent" required>
+          <span>I agree that my details will be used only to process this request, as allowed by the Data Privacy Act of 2012.</span></label>
+        <div id="result"></div>
+        <div><button class="btn" type="submit" id="send">Submit request</button></div>
+      </form>
+    </div>
+    <aside>
+      <div class="card">
+        <h3>Track your request</h3>
+        <form class="form" id="trackForm" style="max-width:none">
+          <label>Tracking code <input name="code" placeholder="BC-XXXXXX" required maxlength="20"></label>
+          <div><button class="btn btn-line" type="submit">Check status</button></div>
+        </form>
+        <div id="trackResult" style="margin-top:14px"></div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+</main>
+<footer class="site-footer" id="site-footer"></footer>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/common.js"></script>
+<script>
+renderShell("request.html");
+
+$("#reqForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const f = new FormData(ev.target);
+  $("#send").disabled = true;
+  const { data, error } = await db.rpc("submit_request", {
+    p_full_name: f.get("full_name"), p_age: +f.get("age"), p_purok: f.get("purok"),
+    p_contact: f.get("contact"), p_doc_type: f.get("doc_type"), p_purpose: f.get("purpose")
+  });
+  $("#send").disabled = false;
+  if (error) { notice($("#result"), "err", "Could not send your request. Please check your details and try again."); return; }
+  $("#result").innerHTML = `<div class="notice ok"><div>Request sent. Save this tracking code:</div>
+    <div class="code">${esc(data)}</div>
+    <div class="small">Use it on the right to check your request status. Take a screenshot so you do not lose it.</div></div>`;
+  ev.target.reset();
+});
+async function track(code) {
+  const out = $("#trackResult");
+  out.textContent = "Checking...";
+  const { data, error } = await db.rpc("track_request", { p_code: code });
+  if (error) { notice(out, "err", "Could not check right now. Please try again."); return; }
+  if (!data || !data.length) { notice(out, "err", "No request found with that code. Check the code and try again."); return; }
+  const r = data[0];
+  out.innerHTML = `<p style="margin:0 0 6px"><b>${esc(r.doc_type)}</b></p>
+    <span class="status ${slug(r.status)}">${esc(r.status)}</span>
+    <p class="small muted" style="margin:10px 0 0">Sent ${fmtDate(r.created_at)}. Last update ${fmtDate(r.updated_at)}.</p>
+    ${r.admin_note ? `<p class="notice" style="margin:12px 0 0">${esc(r.admin_note)}</p>` : ""}`;
+}
+$("#trackForm").addEventListener("submit", ev => { ev.preventDefault(); track(new FormData(ev.target).get("code")); });
+const pre = new URLSearchParams(location.search).get("code");
+if (pre) { $("#trackForm [name=code]").value = pre; track(pre); }
+
+</script>
+</body>
+</html>
